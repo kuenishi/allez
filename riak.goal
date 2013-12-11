@@ -1,10 +1,16 @@
 {
     "Name":"Riak",
     "Version":1.4,
-    "File":"../packages/riak-1.4.2.tar.gz",
+    "File":"../packages/riak_1.4.2-1_amd64.deb",
     "Num":"all",
     "Cp": ".",
-    "Build":["mememe"],
-    "Start":[],
-    "Stop":[]
+    "Build":[
+	"dpkg -i riak_1.4.2-1_amd64.deb"
+    ],
+    "Start":[
+	"riak start"
+    ],
+    "Stop":[
+	"riak stop"
+    ]
 }
