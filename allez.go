@@ -1,15 +1,16 @@
 package main
+
 import (
 	"encoding/json"
-	"fmt"
 	"flag"
-	"os/exec"
-	"os"
-	"log"
+	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
+	"os"
+	"os/exec"
 	"strings"
-	)
+)
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "usage: allez -cmd cp|build|start|stop -nodes nodes [ARGV]\n")
@@ -21,54 +22,49 @@ func main() {
 
 	flag.Usage = usage
 	subcmd := flag.String("cmd", "help", "allez command")
-	nlist  := flag.String("nodes", "nodes", "filename list of machines")
-	gname  := flag.String("goal", "", "")
-	file   := flag.String("file", "", "set your target file")
-	target := flag.String("target", "", "set your target directory")
+	nlist := flag.String("nodes", "nodes", "filename list of machines")
+	gname := flag.String("goal", "", "")
 	// dry-run
 	flag.Parse()
 
 	nodes := get_node_list(*nlist)
 	fmt.Printf("%v on %v\n", *subcmd, nodes)
 
-	goal,_ := NewGoal(*gname)
-	fmt.Printf("%v", goal)
+	goal, err := NewGoal(*gname)
+	if err != nil {
+		fmt.Printf("%s: %v\n", *gname, err)
+		return
+	} else {
+		fmt.Printf("%v\n", goal)
+	}
 
 	log.SetFlags(log.Lshortfile | log.Ldate | log.Ltime)
 	switch *subcmd {
 	case "ls":
 		for i := range nodes {
 			remote := "root@" + nodes[i]
-			out,_ := exec.Command("ssh", remote, "ls").Output()
+			out, _ := exec.Command("ssh", remote, "ls").Output()
 			fmt.Printf(string(out))
 		}
 
 	case "cp": // allez -cmd cp [filenames]
-		if *file == "" {
-			fmt.Printf("no input file\n")
-			return
-		}
-		for i := range nodes {
-			fmt.Printf("running on %s, %s => %s\n", nodes[i], *file, *target)
-			remote_target := "root@" + nodes[i] + ":~/" + *target
-			out,err := exec.Command("scp", *file, remote_target).Output()
-			if err != nil {
-				fmt.Printf("failed to copy to %s\n", remote_target)
-			}
-			fmt.Printf("ok: %v %s\n", out, remote_target)
-		}
+		goal.DoCopy(nodes)
 
 	case "build": // allez -cmd build
-
+		goal.DoBuild(nodes)
 	case "start":
+		goal.DoStart(nodes)
 	case "stop":
-	case "help": usage()
-	default:     usage()
+		goal.DoStop(nodes)
+	case "help":
+		usage()
+	default:
+		usage()
 	}
 }
 
 func get_node_list(nodes string) []string {
-	list,_ := readLines(nodes)
+	list, _ := readLines(nodes)
 	return list
 }
 
@@ -76,46 +72,71 @@ func get_node_list(nodes string) []string {
 // readLines reads a whole file into memory
 // and returns a slice of its lines.
 func readLines(path string) ([]string, error) {
-	content,err := ioutil.ReadFile(path)
+	content, err := ioutil.ReadFile(path)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
-	lines := strings.Split(string(content),"\n")
-	return lines,err
+	lines := strings.Split(string(content), "\n")
+	return lines, err
+}
+
+type NotFoundError struct {
+}
+
+func (e *NotFoundError) Error() string {
+	return "not_found"
 }
 
 type Goal struct {
-	Name,File,Num string
-	Version float32
-	Cp,Build,Start,Stop []string
+	Name, File, Num    string
+	Version            float32
+	Cp                 string
+	Build, Start, Stop []string
 }
-
 
 // "riak" => loads "riak.goal" and parses it
 func NewGoal(name string) (*Goal, error) {
 	filename := name + ".goal"
 	fmt.Printf("loading %s\n", filename)
-	ifp,err := os.Open(filename)
+	ifp, err := os.Open(filename)
 	defer ifp.Close()
 
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 	dec := json.NewDecoder(ifp)
 	var g Goal
 	for {
 		if err = dec.Decode(&g); err == io.EOF {
-			return nil,err
+			return nil, err
 		} else if err != nil {
-			return nil,err
+			return nil, err
 		} else {
 			break
 		}
 	}
-	return &g,err
+	return &g, err
 }
-func (g *Goal) DoCopy() error { return nil }
-func (g *Goal) DoBuild() error { return nil }
-func (g *Goal) DoStart() error { return nil }
-func (g *Goal) DoStop() error { return nil }
 
+func (g *Goal) DoCopy(nodes []string) error {
+	file := g.File
+	if g.File == "" {
+		fmt.Printf("no input file\n")
+		return &NotFoundError{}
+	}
+	for i := range nodes {
+		fmt.Printf("working on %s, %s => %s\n", nodes[i], file, g.Cp)
+		target := "root@" + nodes[i] + ":~/" + g.Cp
+		out, err := exec.Command("scp", file, target).Output()
+		if err != nil {
+			fmt.Printf("failed to copy %s to %s\n", file, target)
+			return err
+		}
+		fmt.Printf("ok: %v %s\n", out, target)
+	}
+
+	return nil
+}
+func (g *Goal) DoBuild(nodes []string) error { return nil }
+func (g *Goal) DoStart(nodes []string) error { return nil }
+func (g *Goal) DoStop(nodes []string) error  { return nil }
