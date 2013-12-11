@@ -1,0 +1,10 @@
+{
+    "Name":"Riak",
+    "Version":1.4,
+    "File":"riak-1.4.2.tar.gz",
+    "Num":"all",
+    "Cp":["to foo bar", "bar", {}],
+    "Build":["mememe"],
+    "Start":[],
+    "Stop":[]
+}
